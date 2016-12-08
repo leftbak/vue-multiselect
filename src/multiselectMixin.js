@@ -1,12 +1,39 @@
 import deepClone from './utils'
+import _ from 'underscore'
+
+function includes(str, query) {
+  if (!str) return false
+  const text = str.toString().toLowerCase()
+  return text.indexOf(query) !== -1
+}
+
+function parseValue(val, options) {
+  var internal = [];
+  options.every(function (option) {
+    if (val.length == 0)
+      return false;
+    var i = 0;
+    for (; i < val.length; i++) {
+      if (option.value == val[i]) {
+        internal.push(option);
+        val.splice(i, 1);
+        break;
+      }
+    }
+    return true;
+  });
+  return internal;
+}
 
 module.exports = {
   data () {
     return {
       search: '',
       isOpen: false,
-      value: this.selected || this.selected === 0
-        ? deepClone(this.selected)
+      internalValue: this.value || this.value === 0
+        ? (this.multiple ?
+        this.options.filter((o) => { return this.value.indexOf(o.value) != -1 }) :
+        this.options.find(o => { return this.value == o.value}))
         : this.multiple ? [] : null
     }
   },
@@ -43,15 +70,18 @@ module.exports = {
      * Presets the selected options value.
      * @type {Object||Array||String||Integer}
      */
-    selected: {},
+    value: {
+      type: null,
+      default: null
+    },
     /**
      * Key to compare objects
      * @default 'id'
      * @type {String}
      */
-    key: {
-      type: String,
-      default: false
+    trackBy: {
+      default: 'value',
+      type: String
     },
     /**
      * Label to look for in option Object
@@ -59,8 +89,7 @@ module.exports = {
      * @type {String}
      */
     label: {
-      type: String,
-      default: false
+      type: String
     },
     /**
      * Enable/disable search in options
@@ -117,9 +146,8 @@ module.exports = {
       default: true
     },
     /**
-     * Reset this.value, this.search, this.selected after this.value changes.
-     * Useful if want to create a stateless dropdown, that fires the this.onChange
-     * callback function with different params.
+     * Reset this.internalValue, this.search after this.internalValue changes.
+     * Useful if want to create a stateless dropdown.
      * @default false
      * @type {Boolean}
      */
@@ -160,7 +188,7 @@ module.exports = {
      * String to show when highlighting a potential tag
      * @default 'Press enter to create a tag'
      * @type {String}
-    */
+     */
     tagPlaceholder: {
       type: String,
       default: 'Press enter to create a tag'
@@ -169,17 +197,16 @@ module.exports = {
      * Number of allowed selected options. No limit if false.
      * @default False
      * @type {Number}
-    */
+     */
     max: {
-      type: Number,
-      default: 0
+      type: Number
     },
     /**
      * Will be passed with all events as second param.
      * Useful for identifying events origin.
      * @default null
      * @type {String|Integer}
-    */
+     */
     id: {
       default: null
     },
@@ -188,7 +215,7 @@ module.exports = {
      * to the first X options.
      * @default 1000
      * @type {Integer}
-    */
+     */
     optionsLimit: {
       type: Number,
       default: 1000
@@ -203,36 +230,45 @@ module.exports = {
       let options = this.hideSelected
         ? this.options.filter(this.isNotSelected)
         : this.options
-      if (this.localSearch) options = this.$options.filters.filterBy(options, this.search)
+      if (this.localSearch) {
+        options = this.label
+          ? options.filter(option => includes(option[this.label], this.search))
+          : options.filter(option => includes(option, this.search))
+      }
       if (this.taggable && search.length && !this.isExistingOption(search)) {
-        options.unshift({ isTag: true, label: search })
+        options.unshift({isTag: true, label: search})
       }
       return options.slice(0, this.optionsLimit)
     },
     valueKeys () {
-      if (this.key) {
+      if (this.trackBy) {
         return this.multiple
-          ? this.value.map(element => element[this.key])
-          : this.value[this.key]
+          ? this.internalValue.map(element => element[this.trackBy])
+          : this.internalValue[this.trackBy]
       } else {
-        return this.value
+        return this.internalValue
       }
     },
     optionKeys () {
       return this.label
-        ? this.options.map(element => element[this.label])
-        : this.options
+        ? this.options.map(element => element[this.label].toString().toLowerCase())
+        : this.options.map(element => element.toString().toLowerCase())
     },
     currentOptionLabel () {
-      return this.getOptionLabel(this.value)
+      return this.multiple ? '' : this.getOptionLabel(this.internalValue)
+    },
+    hideSelected() {
+      return this.multiple ? true : false; //this.hideSelected;
+    },
+    closeOnSelect() {
+      return this.multiple ? false : true; //this.closeOnSelect;
     }
   },
   watch: {
-    'value' () {
+    'internalValue' () {
       if (this.resetAfter) {
-        this.$set('value', null)
-        this.$set('search', null)
-        this.$set('selected', null)
+        this.internalValue = null
+        this.search = ''
       }
       this.adjustSearch()
     },
@@ -242,11 +278,21 @@ module.exports = {
 
       this.$emit('search-change', this.search, this.id)
     },
-    'selected' () {
-      this.value = deepClone(this.selected)
+    'value' () {
+      this.internalValue = this.multiple ?
+        this.options.filter((o) => { return this.value.indexOf(o.value) != -1 }) :
+        this.options.find(o => { return this.value == o.value});
+    },
+    'options' () {
+      this.internalValue = this.multiple ?
+        this.options.filter((o) => { return this.value.indexOf(o.value) != -1 }) :
+        this.options.find(o => { return this.value == o.value});
     }
   },
   methods: {
+    updateSearch (query) {
+      this.search = query.trim().toLowerCase()
+    },
     /**
      * Finds out if the given query is already present
      * in the available options
@@ -266,9 +312,9 @@ module.exports = {
      */
     isSelected (option) {
       /* istanbul ignore else */
-      if (!this.value && this.value !== 0) return false
-      const opt = this.key
-        ? option[this.key]
+      if (!this.internalValue) return false
+      const opt = this.trackBy
+        ? option[this.trackBy]
         : option
 
       if (this.multiple) {
@@ -290,6 +336,7 @@ module.exports = {
      * Returns empty string when options is null/undefined
      * Returns tag query if option is tag.
      * Returns the customLabel() results and casts it to string.
+     *
      * @param  {Object||String||Integer} Passed option
      * @returns {Object||String}
      */
@@ -306,7 +353,7 @@ module.exports = {
      * @param  {Object||String||Integer} option to select/deselect
      */
     select (option) {
-      if (this.max !== 0 && this.multiple && this.value.length === this.max) return
+      if (this.max && this.multiple && this.internalValue.length === this.max) return
       if (option.isTag) {
         this.$emit('tag', option.label, this.id)
         this.search = ''
@@ -316,7 +363,7 @@ module.exports = {
             this.removeElement(option)
             return
           } else {
-            this.value.push(option)
+            this.internalValue.push(option)
           }
         } else {
           const isSelected = this.isSelected(option)
@@ -324,10 +371,12 @@ module.exports = {
           /* istanbul ignore else */
           if (isSelected && !this.allowEmpty) return
 
-          this.value = isSelected ? null : option
+          this.internalValue = isSelected ? null : option
         }
         this.$emit('select', deepClone(option), this.id)
-        this.$emit('update', deepClone(this.value), this.id)
+          var vals = this.multiple ? _.pluck(this.internalValue, this.trackBy) : this.internalValue[this.trackBy];
+        this.$emit('input', vals, this.id);
+        //this.$emit('input', deepClone(this.internalValue), this.id)
 
         if (this.closeOnSelect) this.deactivate()
       }
@@ -342,27 +391,27 @@ module.exports = {
      */
     removeElement (option) {
       /* istanbul ignore else */
-      if (!this.allowEmpty && this.value.length <= 1) return
+      if (!this.allowEmpty && this.internalValue.length <= 1) return
 
-      if (this.multiple && typeof option === 'object') {
-        const index = this.valueKeys.indexOf(option[this.key])
-        this.value.splice(index, 1)
-      } else {
-        this.value.$remove(option)
-      }
+      const index = (this.multiple && typeof option === 'object')
+        ? this.valueKeys.indexOf(option[this.trackBy])
+        : this.valueKeys.indexOf(option)
+
+      this.internalValue.splice(index, 1)
       this.$emit('remove', deepClone(option), this.id)
-      this.$emit('update', deepClone(this.value), this.id)
+      this.$emit('input', _.pluck(this.internalValue, this.trackBy), this.id);
+      //this.$emit('input', deepClone(this.internalValue), this.id)
     },
     /**
      * Calls this.removeElement() with the last element
-     * from this.value (selected element Array)
+     * from this.internalValue (selected element Array)
      *
      * @fires this#removeElement
      */
     removeLastElement () {
       /* istanbul ignore else */
-      if (this.search.length === 0 && Array.isArray(this.value)) {
-        this.removeElement(this.value[this.value.length - 1])
+      if (this.search.length === 0 && Array.isArray(this.internalValue)) {
+        this.removeElement(this.internalValue[this.internalValue.length - 1])
       }
     },
     /**
@@ -377,7 +426,7 @@ module.exports = {
       /* istanbul ignore else  */
       if (this.searchable) {
         this.search = ''
-        this.$els.search.focus()
+        this.$refs.search.focus()
       } else {
         this.$el.focus()
       }
@@ -394,12 +443,12 @@ module.exports = {
       this.isOpen = false
       /* istanbul ignore else  */
       if (this.searchable) {
-        this.$els.search.blur()
+        this.$refs.search.blur()
         this.adjustSearch()
       } else {
         this.$el.blur()
       }
-      this.$emit('close', deepClone(this.value), this.id)
+      this.$emit('close', deepClone(this.internalValue), this.id)
     },
     /**
      * Adjusts the Search property to equal the correct value
@@ -408,11 +457,9 @@ module.exports = {
     adjustSearch () {
       if (!this.searchable || !this.clearOnSelect) return
 
-      this.$nextTick(() => {
-        this.search = this.multiple
-          ? ''
-          : this.currentOptionLabel
-      })
+      this.search = this.multiple
+        ? ''
+        : '' //this.currentOptionLabel
     },
     /**
      * Call this.activate() or this.deactivate()

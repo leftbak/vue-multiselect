@@ -2,7 +2,7 @@ module.exports = {
   data () {
     return {
       pointer: 0,
-      visibleElements: this.maxHeight / this.optionHeight
+      visibleElements: this.maxHeight / 40
     }
   },
   props: {
@@ -14,20 +14,11 @@ module.exports = {
     showPointer: {
       type: Boolean,
       default: true
-    },
-    /**
-     * Sets the height of the option. Used for scroll calculations
-     * @type {Number}
-     * @default 40
-     */
-    optionHeight: {
-      type: Number,
-      default: 40
     }
   },
   computed: {
     pointerPosition () {
-      return this.pointer * this.optionHeight
+      return this.pointer * 40
     }
   },
   watch: {
@@ -36,6 +27,12 @@ module.exports = {
     }
   },
   methods: {
+    optionHighlight (index, option) {
+      return {
+        'multiselect__option--highlight': index === this.pointer && this.showPointer,
+        'multiselect__option--selected': this.isSelected(option)
+      }
+    },
     addPointerElement () {
       if (this.filteredOptions.length > 0) {
         this.select(this.filteredOptions[this.pointer])
@@ -45,16 +42,16 @@ module.exports = {
     pointerForward () {
       if (this.pointer < this.filteredOptions.length - 1) {
         this.pointer++
-        if (this.$els.list.scrollTop <= this.pointerPosition - this.visibleElements * this.optionHeight) {
-          this.$els.list.scrollTop = this.pointerPosition - (this.visibleElements - 1) * this.optionHeight
+        if (this.$refs.list.scrollTop <= this.pointerPosition - this.visibleElements * 40) {
+          this.$refs.list.scrollTop = this.pointerPosition - (this.visibleElements - 1) * 40
         }
       }
     },
     pointerBackward () {
       if (this.pointer > 0) {
         this.pointer--
-        if (this.$els.list.scrollTop >= this.pointerPosition) {
-          this.$els.list.scrollTop = this.pointerPosition
+        if (this.$refs.list.scrollTop >= this.pointerPosition) {
+          this.$refs.list.scrollTop = this.pointerPosition
         }
       }
     },
@@ -62,8 +59,8 @@ module.exports = {
       if (!this.closeOnSelect) return
 
       this.pointer = 0
-      if (this.$els.list) {
-        this.$els.list.scrollTop = 0
+      if (this.$refs.list) {
+        this.$refs.list.scrollTop = 0
       }
     },
     pointerAdjust () {
