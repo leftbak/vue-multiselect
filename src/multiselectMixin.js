@@ -241,7 +241,7 @@ module.exports = {
       return options.slice(0, this.optionsLimit)
     },
     valueKeys () {
-      if (this.trackBy) {
+      if (this.trackBy && this.internalValue) {
         return this.multiple
           ? this.internalValue.map(element => element[this.trackBy])
           : this.internalValue[this.trackBy]
